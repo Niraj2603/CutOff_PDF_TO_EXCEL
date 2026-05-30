@@ -97,3 +97,39 @@ def test_parse_text_pages_handles_realistic_stage_header_and_wrapped_category() 
     assert row.data["TFWS"]["rank"] == 7401
     assert row.data["EWS"]["pct"] == 96.0638523
     assert result.ignored_categories == ["PWDROBCS"]
+
+
+def test_parse_text_pages_prefers_home_university_section_over_state_level() -> None:
+    pages = [
+        "\n".join(
+            [
+                "Cut Off List for Maharashtra & Minority Seats of CAP Round I 2025-26",
+                "01005 - Sant Gadge Baba Amravati University,Amravati",
+                "0100550310 - Food Technology",
+                "Status: University Department Home University : Sant Gadge Baba Amravati University",
+                "Home University Seats Allotted to Home University Candidates",
+                "Stage GOPENH GSCH GOBCH LOPENH LOBCH",
+                "I 23654 37414 24342 8634 25406",
+                "(93.6155480) (89.7377897) (93.4485531) (97.6779266) (93.1151448)",
+                "Other Than Home University Seats Allotted to Other Than Home University Candidates",
+                "Stage GOPENO GSCO LOPENO",
+                "I 4917 39936 27666",
+                "(98.6379064) (89.0432875) (92.4619674)",
+                "State Level",
+                "Stage EWS",
+                "I 79514",
+                "(77.0149774)",
+            ]
+        )
+    ]
+
+    result = parse_text_pages(pages, source_name="CAP_Round_I_2025-26.pdf")
+    row = result.rows[0]
+
+    assert row.data["GOPENS"]["rank"] == 23654
+    assert row.data["GOPENS"]["pct"] == 93.6155480
+    assert row.data["GSCS"]["rank"] == 37414
+    assert row.data["GOBCS"]["rank"] == 24342
+    assert row.data["LOPENS"]["rank"] == 8634
+    assert row.data["LOBCS"]["rank"] == 25406
+    assert row.data["EWS"]["rank"] == 79514

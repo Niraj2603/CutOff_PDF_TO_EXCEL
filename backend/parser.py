@@ -98,6 +98,7 @@ TOKEN_RE = re.compile(r"\S+")
 CATEGORY_FRAGMENT_RE = re.compile(r"^[A-Z][A-Z0-9]*$")
 COMPLETE_EXTRA_CATEGORIES = {"PWDROBCS", "DEFRNT3S", "DEFRSEBCS"}
 COMPLETE_CATEGORY_CODES = ALL_KNOWN_CATEGORY_SET | COMPLETE_EXTRA_CATEGORIES
+SECTION_SUFFIX_PRIORITY = {"H": 3, "S": 2, "O": 1, "": 0}
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -164,6 +165,7 @@ class ParserState:
     current_minority_status: str = "General"
     current_home_university: str = ""
     current_data: dict[str, dict[str, float | int]] = field(default_factory=dict)
+    current_data_priority: dict[str, int] = field(default_factory=dict)
     mode: str = "seeking"
     table_columns: list[TableColumn] = field(default_factory=list)
     pending_rank_pairs: list[tuple[str, int]] = field(default_factory=list)
@@ -176,6 +178,7 @@ class ParserState:
         self.current_minority_status = "General"
         self.current_home_university = ""
         self.current_data = {}
+        self.current_data_priority = {}
         self.mode = "seeking"
         self.table_columns = []
         self.pending_rank_pairs = []
@@ -208,12 +211,16 @@ class ParserState:
 
         for index in range(total_pairs):
             category, rank_value = self.pending_rank_pairs[index]
+            normalized_category, priority = normalize_category_code(category)
             percentile_text = percentile_tokens[index]
-            self.current_data[category] = {
+            if priority < self.current_data_priority.get(normalized_category, -1):
+                continue
+            self.current_data[normalized_category] = {
                 "rank": int(rank_value),
                 "pct": float(percentile_text),
             }
-            if category not in EXPORTED_CATEGORY_CODES:
+            self.current_data_priority[normalized_category] = priority
+            if normalized_category not in EXPORTED_CATEGORY_CODES:
                 self.ignored_categories.add(category)
 
         self.mode = "reading_table_headers"
@@ -304,6 +311,30 @@ def extract_status_details(status_line: str) -> tuple[str, str, str]:
     return college_type, minority_status, home_university
 
 
+def normalize_category_code(category: str) -> tuple[str, int]:
+    category = category.upper()
+    match = re.fullmatch(r"([GL])(.+)([HSO])", category)
+    if not match:
+        return category, SECTION_SUFFIX_PRIORITY[""]
+
+    prefix, middle, suffix = match.groups()
+    normalized_middle = {
+        "OPEN": "OPEN",
+        "SC": "SC",
+        "ST": "ST",
+        "VJ": "VJ",
+        "NT1": "NT1",
+        "NT2": "NT2",
+        "NT3": "NT3",
+        "OBC": "OBC",
+        "SEBC": "SEBC",
+    }.get(middle)
+    if normalized_middle is None:
+        return category, SECTION_SUFFIX_PRIORITY[""]
+
+    return f"{prefix}{normalized_middle}S", SECTION_SUFFIX_PRIORITY[suffix]
+
+
 def detect_round_and_year(text: str, source_name: str | None = None) -> tuple[str, str | None, str, str]:
     probe_text = " ".join(part for part in [text, source_name or ""] if part)
     round_match = ROUND_RE.search(probe_text)
@@ -326,6 +357,15 @@ def detect_round_and_year(text: str, source_name: str | None = None) -> tuple[st
 
 def _extract_category_tokens(line: str) -> list[str]:
     return [token for token in line.upper().split() if token in ALL_KNOWN_CATEGORY_SET]
+
+
+def _line_contains_category_header(raw_line: str) -> bool:
+    for token, _, _ in _tokenize_with_positions(raw_line):
+        if token.upper() == "STAGE":
+            continue
+        if normalize_category_code(token)[0] in EXPORTED_CATEGORY_CODES:
+            return True
+    return False
 
 
 def _is_rank_line(line: str) -> bool:
@@ -550,6 +590,11 @@ def parse_text_pages(
 
                 if re.match(r"^Stage\s+I\b", line, re.IGNORECASE):
                     state.start_block()
+                    continue
+
+                if re.match(r"^Stage\b", line, re.IGNORECASE) and _line_contains_category_header(raw_line):
+                    state.start_block()
+                    state.table_columns = _merge_table_header_tokens(state.table_columns, raw_line)
                     continue
 
                 if re.fullmatch(r"Stage", line, re.IGNORECASE):
