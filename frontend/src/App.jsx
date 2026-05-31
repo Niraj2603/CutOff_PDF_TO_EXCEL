@@ -38,11 +38,13 @@ export default function App() {
       try {
         const response = await fetch(`${API_BASE}/api/status/${status.job_id}`);
         const payload = await response.json();
+
         if (!response.ok) {
           throw new Error(payload.detail || "Failed to fetch job status.");
         }
 
         setStatus(payload);
+
         if (payload.status === "complete") {
           setPhase("complete");
         } else if (payload.status === "error") {
@@ -66,9 +68,11 @@ export default function App() {
 
   const handleBrowse = (event) => {
     const file = event.target.files?.[0];
+
     if (!file) {
       return;
     }
+
     setError("");
     setSelectedFile(file);
   };
@@ -76,14 +80,18 @@ export default function App() {
   const handleDrop = (event) => {
     event.preventDefault();
     setDragActive(false);
+
     const file = event.dataTransfer.files?.[0];
+
     if (!file) {
       return;
     }
+
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       setError("Please upload a valid MHT-CET CAP Round PDF");
       return;
     }
+
     setError("");
     setSelectedFile(file);
   };
@@ -95,28 +103,49 @@ export default function App() {
 
     const formData = new FormData();
     formData.append("file", selectedFile);
+
     setError("");
     setPhase("processing");
-    setStatus({ ...INITIAL_STATUS, message: "Uploading PDF..." });
+    setStatus({
+      ...INITIAL_STATUS,
+      message: "Uploading PDF...",
+    });
 
     try {
       const response = await fetch(`${API_BASE}/api/upload`, {
         method: "POST",
         body: formData,
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.detail || "Unable to upload the selected PDF.");
+
+      // Prevent crashes when backend returns HTML instead of JSON
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          `The server returned an unexpected response (status ${response.status}). ` +
+            `The Space may be starting up or overloaded — wait 30 seconds and try again.`
+        );
       }
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          payload.detail || "Unable to upload the selected PDF."
+        );
+      }
+
       setStatus((currentStatus) => ({
         ...currentStatus,
         job_id: payload.job_id,
         status: payload.status,
-        message: "Reading PDF pages...",
+        message: payload.message || "Reading PDF pages...",
       }));
     } catch (requestError) {
       setPhase("upload");
-      setError(requestError.message || "Unable to upload the selected PDF.");
+      setError(
+        requestError.message || "Unable to upload the selected PDF."
+      );
     }
   };
 
@@ -137,23 +166,34 @@ export default function App() {
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-gold">
                 Maharashtra Engineering Admissions
               </p>
+
               <h1 className="mt-4 max-w-3xl font-display text-4xl font-bold leading-tight sm:text-5xl">
                 MHT-CET Cutoff PDF to Counseling Excel Converter
               </h1>
+
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/80 sm:text-base">
-                Designed for educational counselors who need a ranked, filter-ready cutoff workbook
-                in under a minute.
+                Designed for educational counselors who need a ranked,
+                filter-ready cutoff workbook in under a minute.
               </p>
             </div>
 
             <div className="grid gap-4 rounded-[28px] bg-white/10 p-5 backdrop-blur sm:grid-cols-2">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-white/60">Counseling promise</p>
-                <p className="mt-2 text-xl font-bold">10-second answer flow</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-white/60">
+                  Counseling promise
+                </p>
+                <p className="mt-2 text-xl font-bold">
+                  10-second answer flow
+                </p>
               </div>
+
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-white/60">Output</p>
-                <p className="mt-2 text-xl font-bold">Excel for CAP filters</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-white/60">
+                  Output
+                </p>
+                <p className="mt-2 text-xl font-bold">
+                  Excel for CAP filters
+                </p>
               </div>
             </div>
           </div>
@@ -174,35 +214,63 @@ export default function App() {
               />
             ) : null}
 
-            {phase === "processing" ? <ProgressSection status={status} /> : null}
+            {phase === "processing" ? (
+              <ProgressSection status={status} />
+            ) : null}
 
             {phase === "complete" || phase === "error" ? (
-              <DownloadSection status={status} apiBase={API_BASE} onReset={handleReset} />
+              <DownloadSection
+                status={status}
+                apiBase={API_BASE}
+                onReset={handleReset}
+              />
             ) : null}
           </div>
 
           <aside className="animate-rise rounded-[28px] border border-white/70 bg-white/75 p-6 shadow-panel backdrop-blur">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-coral">Counselor workflow</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-coral">
+              Counselor workflow
+            </p>
+
             <ol className="mt-4 space-y-4 text-sm leading-6 text-slate">
               <li className="rounded-2xl bg-mist p-4">
-                <span className="block font-semibold text-ink">1. Gather student context</span>
-                Percentile, category, city or district, preferred branch, and gender.
+                <span className="block font-semibold text-ink">
+                  1. Gather student context
+                </span>
+                Percentile, category, city or district, preferred branch,
+                and gender.
               </li>
+
               <li className="rounded-2xl bg-mist p-4">
-                <span className="block font-semibold text-ink">2. Filter the workbook</span>
-                Use city, district, branch, and college type filters to narrow options instantly.
+                <span className="block font-semibold text-ink">
+                  2. Filter the workbook
+                </span>
+                Use city, district, branch, and college type filters to
+                narrow options instantly.
               </li>
+
               <li className="rounded-2xl bg-mist p-4">
-                <span className="block font-semibold text-ink">3. Compare cutoffs</span>
-                Sort by the relevant percentile column and identify safe and borderline colleges.
+                <span className="block font-semibold text-ink">
+                  3. Compare cutoffs
+                </span>
+                Sort by the relevant percentile column and identify safe and
+                borderline colleges.
               </li>
             </ol>
 
             <div className="mt-6 rounded-[24px] bg-gradient-to-br from-gold/25 to-coral/10 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate">Current app state</p>
-              <p className="mt-2 text-xl font-bold text-ink">
-                {phase === "upload" ? "Ready for a new PDF" : phase === "processing" ? "Conversion in progress" : "Workbook ready"}
+              <p className="text-xs uppercase tracking-[0.18em] text-slate">
+                Current app state
               </p>
+
+              <p className="mt-2 text-xl font-bold text-ink">
+                {phase === "upload"
+                  ? "Ready for a new PDF"
+                  : phase === "processing"
+                  ? "Conversion in progress"
+                  : "Workbook ready"}
+              </p>
+
               <p className="mt-2 text-sm leading-6 text-slate">
                 {phase === "processing"
                   ? status.message || "Reading PDF pages..."
